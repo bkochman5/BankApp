@@ -19,7 +19,8 @@ class Account implements Serializable {
     private final String pin;
     private static final Map<String, Double> exchangeRates = Map.of(
             "EUR", 1.13, "USD", 1.24, "AUD", 1.80, "CNY", 8.70, "CHF", 1.07);
-
+    private int failedLoginAttempts = 0;
+    private long lastFailedLoginTime = 0;
 
     public Account(String accountId, String ownerName, String pin, double initialBalance) {
         this.accountId = accountId;
@@ -115,6 +116,35 @@ class Transaction implements Serializable {
 class Bank {
     private Map<String, Account> accounts = new HashMap<>();
 
+    public boolean login(String accountId, String pinAttempt) {
+        Account account = accounts.get(accountId);
+        if (account == null) {
+            System.out.println("Account ID not found.");
+            return false;
+        }
+
+        // Check for lockout condition
+        if (account.failedLoginAttempts >= 3 &&
+                (System.currentTimeMillis() - account.lastFailedLoginTime < 60000)) {
+            System.out.println("Account is temporarily locked. Please try again later.");
+            return false;
+        }
+
+        if (account.validatePIN(pinAttempt)) {
+            System.out.println("Login successful.");
+            account.failedLoginAttempts = 0; // Reset failed attempts on successful login
+            return true;
+        } else {
+            account.failedLoginAttempts++;
+            account.lastFailedLoginTime = System.currentTimeMillis();
+            System.out.println("Invalid PIN. Attempt " + account.failedLoginAttempts + "/3");
+            if (account.failedLoginAttempts >= 3) {
+                System.out.println("Account is locked. Please try again after one minute.");
+            }
+            return false;
+        }
+    }
+
     public void createAccount(String accountId, String ownerName, String pin, double initialBalance) {
         if (!accounts.containsKey(accountId)) {
             accounts.put(accountId, new Account(accountId, ownerName, pin, initialBalance));
@@ -208,16 +238,15 @@ public class BankApp {
                 case 1:
                     createAccountUI(bank);
                     break;
-                case 2:
+                case 2: // Log In
                     System.out.print("Please enter your Account ID: ");
                     String accountId = scanner.nextLine();
                     System.out.print("Enter your PIN: ");
                     String pin = scanner.nextLine();
-                    Account account = bank.getAccount(accountId);
-                    if (account != null && account.validatePIN(pin)) {
+
+                    if (bank.login(accountId, pin)) {
+                        Account account = bank.getAccount(accountId);
                         accountMenu(account);
-                    } else {
-                        System.out.println("Invalid Account ID or PIN.");
                     }
                     break;
                 case 3:
@@ -232,6 +261,7 @@ public class BankApp {
 //        System.out.println("Accounts saved to file.");
         System.out.println("Thank you for using our banking system!");
     }
+
 
     private static void createAccountUI(Bank bank) {
         System.out.print("Enter Account ID: ");
